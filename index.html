@@ -1,131 +1,37 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="UTF-8">
-  <title>Watch Party</title>
-  <script src="https://www.youtube.com/iframe_api"></script>
+  <meta charset="UTF-8" />
+  <title>Watch Party – Create / Join</title>
   <style>
-    body { font-family: Arial; text-align: center; }
-    input, button { padding: 6px; margin: 4px; }
-    ul { list-style: none; padding: 0; }
+    body { font-family: Arial; text-align: center; padding: 50px; }
+    input, button { padding: 10px; margin: 5px; width: 250px; }
   </style>
 </head>
-
 <body>
 
 <h2>🎬 Watch Party</h2>
 
-<input id="username" placeholder="Your name">
-<input id="room" placeholder="Room name">
-<input id="password" placeholder="Room password">
-<button onclick="join()">Join</button>
+<input id="room" placeholder="Room name" />
+<input id="password" placeholder="Room password" type="password" />
 
-<br><br>
+<br />
 
-<input id="videoId" placeholder="YouTube Video ID">
-<button onclick="changeVideo()">Change Video</button>
-
-<br><br>
-
-<button onclick="play()">Play</button>
-<button onclick="pause()">Pause</button>
-
-<div id="player"></div>
-
-<h3>Users</h3>
-<ul id="users"></ul>
+<button onclick="joinRoom()">Join Room</button>
 
 <script>
-const WS_URL = "wss://watchparty-server-xnp3.onrender.com";
-let socket, player, expectedTime = 0;
+function joinRoom() {
+  const room = document.getElementById("room").value.trim();
+  const password = document.getElementById("password").value;
 
-function onYouTubeIframeAPIReady() {
-  player = new YT.Player("player", {
-    height: "360",
-    width: "640"
-  });
-}
-
-function join() {
-  socket = new WebSocket(WS_URL);
-
-  socket.onopen = () => {
-    socket.send(JSON.stringify({
-      type: "join",
-      room: room.value,
-      password: password.value,
-      user: username.value
-    }));
-  };
-
-  socket.onmessage = (e) => {
-    const msg = JSON.parse(e.data);
-
-    if (msg.type === "error") {
-      alert(msg.message);
-      return;
-    }
-
-    if (msg.type === "sync") {
-      if (msg.videoId) {
-        player.loadVideoById(msg.videoId);
-        player.seekTo(msg.time, true);
-        expectedTime = msg.time;
-        if (msg.isPlaying) player.playVideo();
-      }
-    }
-
-    if (msg.type === "changeVideo") {
-      player.loadVideoById(msg.videoId);
-    }
-
-    if (msg.type === "play") {
-      expectedTime = msg.time;
-      player.seekTo(msg.time, true);
-      player.playVideo();
-    }
-
-    if (msg.type === "pause") {
-      player.pauseVideo();
-    }
-
-    if (msg.type === "users") {
-      users.innerHTML = "";
-      msg.users.forEach(u => {
-        let role = u === msg.host ? " (Host)" :
-                   msg.subhosts.includes(u) ? " (Subhost)" : "";
-        users.innerHTML += `<li>${u}${role}</li>`;
-      });
-    }
-  };
-}
-
-function changeVideo() {
-  socket.send(JSON.stringify({
-    type: "changeVideo",
-    videoId: videoId.value
-  }));
-}
-
-function play() {
-  socket.send(JSON.stringify({
-    type: "play",
-    time: player.getCurrentTime()
-  }));
-}
-
-function pause() {
-  socket.send(JSON.stringify({ type: "pause" }));
-}
-
-// Drift correction
-setInterval(() => {
-  if (!player || player.getPlayerState() !== 1) return;
-  const drift = Math.abs(player.getCurrentTime() - expectedTime);
-  if (drift > 0.5) {
-    player.seekTo(expectedTime, true);
+  if (!room) {
+    alert("Room name required");
+    return;
   }
-}, 3000);
+
+  window.location.href =
+    `room.html?room=${encodeURIComponent(room)}&password=${encodeURIComponent(password)}`;
+}
 </script>
 
 </body>
