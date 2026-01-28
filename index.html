@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Watch Party</title>
+  <script src="https://www.youtube.com/iframe_api"></script>
+</head>
+<body>
+
+<h2>Watch Party</h2>
+
+<p>Paste YouTube link or video ID:</p>
+<input id="videoInput" style="width:300px">
+<button onclick="loadVideo()">Load Video</button>
+
+<br><br>
+
+<button onclick="play()">Play</button>
+<button onclick="pause()">Pause</button>
+
+<div id="player"></div>
+
+<script>
+let player;
+
+const params = new URLSearchParams(window.location.search);
+const roomId = params.get("room") || "test-room";
+
+const socket = new WebSocket("wss://watchparty-server-xnp3.onrender.com");
+
+socket.onopen = () => {
+  socket.send(JSON.stringify({
+    type: "JOIN",
+    roomId
+  }));
+};
+
+socket.onmessage = e => {
+  const { type, payload } = JSON.parse(e.data);
+  if (type === "STATE") applyState(payload);
+};
+
+function onYouTubeIframeAPIReady() {
+  player = new YT.Player("player", {
+    height: "360",
+    width: "640"
+  });
+}
+
+function extractVideoId(input) {
+  try {
+    const url = new URL(input);
+    return url.searchParams.get("v");
+  } catch {
+    return input;
+  }
+}
+
+function loadVideo() {
+  const input = document.getElementById("videoInput").value.trim();
+  if (!input) return alert("Enter a YouTube link or ID");
+
+  const videoId = extractVideoId(input);
+
+  socket.send(JSON.stringify({
+    type: "LOAD_VIDEO",
+    roomId,
+    payload: { videoId }
+  }));
+}
+
+function play() {
+  socket.send(JSON.stringify({
+    type: "PLAY",
+    roomId
+  }));
+}
+
+function pause() {
+  socket.send(JSON.stringify({
+    type: "PAUSE",
+    roomId,
+    payload: {
+      position: player.getCurrentTime()
+    }
+  }));
+}
+
+function applyState(state) {
+  if (state.videoId && player.getVideoData().video_id !== state.videoId) {
+    player.loadVideoById(state.videoId);
+  }
+
+  const elapsed = (Date.now() - state.lastUpdated) / 1000;
+  const expectedTime = state.isPlaying
+    ? state.position + elapsed
+    : state.position;
+
+  if (Math.abs(player.getCurrentTime() - expectedTime) > 0.5) {
+    player.seekTo(expectedTime, true);
+  }
+
+  if (state.isPlaying) player.playVideo();
+  else player.pauseVideo();
+}
+</script>
+
+</body>
+</html>
