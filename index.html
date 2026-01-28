@@ -1,109 +1,141 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
   <title>Watch Party</title>
-  <script src="https://www.youtube.com/iframe_api"></script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f4f4f4;
+      text-align: center;
+      padding: 20px;
+    }
+    input, button {
+      padding: 8px;
+      margin: 5px;
+    }
+    #player {
+      margin-top: 20px;
+    }
+    #status {
+      margin-top: 10px;
+      font-size: 14px;
+      color: #333;
+    }
+  </style>
 </head>
+
 <body>
 
-<h2>Watch Party</h2>
+<h2>🎬 Watch Party</h2>
 
-<p>Paste YouTube link or video ID:</p>
-<input id="videoInput" style="width:300px">
-<button onclick="loadVideo()">Load Video</button>
+<div>
+  <input id="roomInput" placeholder="Room name" />
+  <input id="videoInput" placeholder="YouTube Video ID" />
+  <button onclick="joinRoom()">Join Room</button>
+</div>
 
-<br><br>
-
-<button onclick="play()">Play</button>
-<button onclick="pause()">Pause</button>
+<div>
+  <button onclick="playVideo()">Play</button>
+  <button onclick="pauseVideo()">Pause</button>
+</div>
 
 <div id="player"></div>
+<div id="status">Disconnected</div>
+
+<script src="https://www.youtube.com/iframe_api"></script>
 
 <script>
-let player;
+  // 🔗 WebSocket URL (Render backend)
+  const WS_URL = "wss://watchparty-server-xnp3.onrender.com";
 
-const params = new URLSearchParams(window.location.search);
-const roomId = params.get("room") || "test-room";
+  let socket;
+  let player;
+  let room = null;
 
-const socket = new WebSocket("wss://watchparty-server-xnp3.onrender.com");
-
-socket.onopen = () => {
-  socket.send(JSON.stringify({
-    type: "JOIN",
-    roomId
-  }));
-};
-
-socket.onmessage = e => {
-  const { type, payload } = JSON.parse(e.data);
-  if (type === "STATE") applyState(payload);
-};
-
-function onYouTubeIframeAPIReady() {
-  player = new YT.Player("player", {
-    height: "360",
-    width: "640"
-  });
-}
-
-function extractVideoId(input) {
-  try {
-    const url = new URL(input);
-    return url.searchParams.get("v");
-  } catch {
-    return input;
+  // Load YouTube player
+  function onYouTubeIframeAPIReady() {
+    player = new YT.Player("player", {
+      height: "360",
+      width: "640",
+      videoId: "",
+      events: {
+        onStateChange: onPlayerStateChange
+      }
+    });
   }
-}
 
-function loadVideo() {
-  const input = document.getElementById("videoInput").value.trim();
-  if (!input) return alert("Enter a YouTube link or ID");
+  // Join a room
+  function joinRoom() {
+    room = document.getElementById("roomInput").value.trim();
+    const videoId = document.getElementById("videoInput").value.trim();
 
-  const videoId = extractVideoId(input);
-
-  socket.send(JSON.stringify({
-    type: "LOAD_VIDEO",
-    roomId,
-    payload: { videoId }
-  }));
-}
-
-function play() {
-  socket.send(JSON.stringify({
-    type: "PLAY",
-    roomId
-  }));
-}
-
-function pause() {
-  socket.send(JSON.stringify({
-    type: "PAUSE",
-    roomId,
-    payload: {
-      position: player.getCurrentTime()
+    if (!room || !videoId) {
+      alert("Enter room name and video ID");
+      return;
     }
-  }));
-}
 
-function applyState(state) {
-  if (state.videoId && player.getVideoData().video_id !== state.videoId) {
-    player.loadVideoById(state.videoId);
+    socket = new WebSocket(WS_URL);
+
+    socket.onopen = () => {
+      document.getElementById("status").textContent = "Connected";
+      socket.send(JSON.stringify({
+        type: "join",
+        room,
+        videoId
+      }));
+      player.loadVideoById(videoId);
+    };
+
+    socket.onmessage = (event) => {
+      const msg = JSON.parse(event.data);
+
+      if (msg.room !== room) return;
+
+      if (msg.type === "play") {
+        player.seekTo(msg.time, true);
+        player.playVideo();
+      }
+
+      if (msg.type === "pause") {
+        player.pauseVideo();
+      }
+    };
+
+    socket.onerror = () => {
+      document.getElementById("status").textContent = "WebSocket error";
+    };
   }
 
-  const elapsed = (Date.now() - state.lastUpdated) / 1000;
-  const expectedTime = state.isPlaying
-    ? state.position + elapsed
-    : state.position;
+  // Send play event
+  function playVideo() {
+    if (!socket || socket.readyState !== 1) return;
 
-  if (Math.abs(player.getCurrentTime() - expectedTime) > 0.5) {
-    player.seekTo(expectedTime, true);
+    socket.send(JSON.stringify({
+      type: "play",
+      room,
+      time: player.getCurrentTime()
+    }));
   }
 
-  if (state.isPlaying) player.playVideo();
-  else player.pauseVideo();
-}
+  // Send pause event
+  function pauseVideo() {
+    if (!socket || socket.readyState !== 1) return;
+
+    socket.send(JSON.stringify({
+      type: "pause",
+      room
+    }));
+  }
+
+  // Prevent infinite loops
+  function onPlayerStateChange(event) {
+    // Intentionally left minimal
+  }
 </script>
 
 </body>
 </html>
+
